@@ -1,0 +1,32 @@
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# AWS / credentials
+.aws/
+credentials
+*.pem
+*.key
+
+# Archives / generated files
+*.zip
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+*secrets.json
