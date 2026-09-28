@@ -47,7 +47,7 @@ jobs:
             docker build \
               -f "$dockerfile" \
               -t "$ECR_REGISTRY/$repository:latest" \
-              .
+              ./backend
 
             echo "Pushing $repository..."
             docker push "$ECR_REGISTRY/$repository:latest"
@@ -72,8 +72,14 @@ jobs:
 
           build_push docker/agent-worker.Dockerfile banking-agent-worker
 
-          build_push otel/Dockerfile banking-otel-collector
+          echo "Building banking-otel-collector..."
+          docker build \
+            -f otel/Dockerfile \
+            -t "$ECR_REGISTRY/banking-otel-collector:latest" \
+            ./otel
 
+          echo "Pushing banking-otel-collector..."
+          docker push "$ECR_REGISTRY/banking-otel-collector:latest"
       - name: Deploy ECS services
         run: |
           set -e
