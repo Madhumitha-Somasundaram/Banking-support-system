@@ -1,0 +1,141 @@
+name: Deploy Banking Support System
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "131404648821"
+  ECS_CLUSTER: banking-support
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::131404648821:role/BankingSupportGitHubActions
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker images
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -e
+
+          build_push() {
+            local dockerfile="$1"
+            local repository="$2"
+
+            echo "Building $repository..."
+            docker build \
+              -f "$dockerfile" \
+              -t "$ECR_REGISTRY/$repository:latest" \
+              .
+
+            echo "Pushing $repository..."
+            docker push "$ECR_REGISTRY/$repository:latest"
+          }
+
+          build_push docker/main.Dockerfile banking-main
+
+          build_push docker/agents/account.Dockerfile banking-account-agent
+          build_push docker/agents/transaction.Dockerfile banking-transaction-agent
+          build_push docker/agents/card.Dockerfile banking-card-agent
+          build_push docker/agents/rag.Dockerfile banking-rag-agent
+
+          build_push docker/mcp/account.Dockerfile banking-account-mcp
+          build_push docker/mcp/transaction.Dockerfile banking-transaction-mcp
+          build_push docker/mcp/card.Dockerfile banking-card-mcp
+          build_push docker/mcp/rag.Dockerfile banking-rag-mcp
+
+          build_push docker/services/account.Dockerfile banking-account-service
+          build_push docker/services/transaction.Dockerfile banking-transaction-service
+          build_push docker/services/card.Dockerfile banking-card-service
+          build_push docker/services/rag.Dockerfile banking-rag-service
+
+          build_push docker/agent-worker.Dockerfile banking-agent-worker
+
+          build_push otel/Dockerfile banking-otel-collector
+
+      - name: Deploy ECS services
+        run: |
+          set -e
+
+          services=(
+            main-backend
+            account-agent
+            transaction-agent
+            card-agent
+            rag-agent
+            account-mcp
+            transaction-mcp
+            card-mcp
+            rag-mcp
+            account-service
+            transaction-service
+            card-service
+            rag-service
+            agent-worker
+          )
+
+          for service in "${services[@]}"; do
+            echo "Updating ECS service: $service"
+
+            aws ecs update-service \
+              --cluster "$ECS_CLUSTER" \
+              --service "$service" \
+              --force-new-deployment \
+              --no-cli-pager
+          done
+
+      - name: Wait for ECS deployments
+        run: |
+          set -e
+
+          services=(
+            main-backend
+            account-agent
+            transaction-agent
+            card-agent
+            rag-agent
+            account-mcp
+            transaction-mcp
+            card-mcp
+            rag-mcp
+            account-service
+            transaction-service
+            card-service
+            rag-service
+            agent-worker
+          )
+
+          for service in "${services[@]}"; do
+            echo "Waiting for $service..."
+
+            aws ecs wait services-stable \
+              --cluster "$ECS_CLUSTER" \
+              --services "$service"
+
+            echo "$service is stable."
+          done
+
+      - name: Verify API
+        run: |
+          curl -f --retry 5 --retry-delay 5 https://api.payanams.xyz/api/health

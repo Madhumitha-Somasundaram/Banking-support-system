@@ -2,6 +2,8 @@
 .env
 .env.*
 !.env.example
+secret.json
+infrastructure/terraform/secret.json
 
 # Python
 venv/
